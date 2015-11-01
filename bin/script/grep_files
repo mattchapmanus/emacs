@@ -1,0 +1,443 @@
+#!/depot/perl-5.8.3/bin/perl
+
+@cmdline = @ARGV;               # save a copy
+
+($script = $0) =~ s#^.*/##;     # get basename of this script
+
+require "getopts.pl";
+&Getopts('aA:b:cCd:D:e:fF:gGhijJklL:mM:nN:o:Op:qrs:StuvVwx:X:yz');
+
+# use syswrite() to force line buffering even on redirected/piped output
+sub printline {
+    my ( $line ) = @_;
+
+    # remove binary chars
+    $line =~ tr/\000-\010\013-\037\177-\377//d;
+
+    if ( $opt_J ) {             # join lines
+        $line =~ s/\n//g;
+    }
+    $full_line .= $line;
+    if ( $full_line =~ /\n/ ) {
+        syswrite(STDOUT, $full_line, length($full_line));
+        $full_line = "";
+    }
+
+    exit 0 if ( $opt_M && ++$matches >= $opt_M );
+}
+
+sub printlineFlush {
+    if ( $opt_J ) {
+        $opt_J = 0;
+        printline "\n";
+    }
+}
+
+sub printcontext {
+    my ( $ln ) = @_;
+    if ( ! $printed{$ln} ) {
+        my $f = ( $opt_f )? "": "${filenm}:";
+        my $u = ( $opt_u )? "$ln:": "";
+        printline "${f}${u}$context[$ln]";
+    }
+    $printed{$ln} = 1;
+}
+
+sub printtail {
+    my ( $ln ) = @_;
+    if ( $ln < $tail ) {
+        printcontext $ln;
+    }
+}
+
+sub printlineC {
+    my ( $line ) = @_;
+
+    if ( $opt_C ) {             # context
+        my $ln = $lineno - $opt_D - 1;
+        while ( $ln < 0 ) { ++$ln; }
+        while ( $ln < $lineno ) {
+            printcontext $ln;
+            ++$ln;
+        }
+        $tail = $lineno + $opt_D;
+    }
+    else {
+        my $f = ( $opt_f )? "": "${filenm}:";
+        my $u = ( $opt_u )? "$lineno:": "";
+        my $l = ( $opt_G )? "\n": "$line";
+        printline "${f}${u}${l}";
+    }
+}
+
+if ( ! @ARGV && ! $opt_p && ! $opt_A ) {
+    print "Usage: $script [flags] \"search-string\"
+  flags:
+    -a            = all files
+    -A <file>     = obtain patterns from <file>, one per line
+    -b <depth>    = '1' means just current directory
+    -c            = c/c++ files
+    -C            = context display (see -D)
+    -d <dirs>     = start search at directory <dirs> \"d1,d2,...\"
+    -D <N>        = display N lines of context (see -C)
+    -e <ext>      = search files with extension <ext> or (<ext>|<ext>|...)
+    -f            = don't display the filename
+    -F <file>     = <file> contains a list of files to search
+    -g            = display filename but not text (once per file)
+    -G            = display filename but not text (once per match)
+    -h            = header files
+    -i            = case insensitive
+    -j            = don't search .dirconfig=DISABLED dirs
+    -J            = join matching lines into a single output line
+    -k            = examine links also (links are normally ignored)
+    -l            = lex files
+    -m            = makefiles
+    -M <N>        = exit after N matches
+    -n            = just print the number of matching lines
+    -N <N>        = display max of N matches per file
+    -o s|c|sc     = omit search inside comments, s = #, c = // and /**/
+    -O            = omit search inside strings
+    -p <pattern>  = pattern to match
+    -P <regexp>   = skip files which match pattern <regexp>
+    -q            = no error reports (quiet)
+    -r            = executable scripts (sh and csh)
+    -s <dirs>     = skip dirs \"d1,d2,...\"
+    -S            = sequential search (slower)
+    -t            = tcl files
+    -u            = display line numbers
+    -v            = display non-matching lines
+    -V            = verbose
+    -w            = search string is bounded by non-word chars
+    -x <fname>    = search files that match this fname pattern
+    -X <fname>    = search the one file fname
+    -y            = yacc files
+    -z            = perl and python files\n";
+    exit 0;
+}
+
+$opt_D = 3 if ( ! $opt_D );     # default context
+$full_line = "";
+@context = ();
+$lineno = 0;
+$filenm = "";
+%printed = ();
+$tail = 0;
+$matches = 0;
+$opt_S = 1 if ( $opt_M );
+
+die "$script: use -A or -p.\n" if ( $opt_A && $opt_p );
+
+my $search_string = ( @ARGV ) ? shift @ARGV : $opt_p;
+if ( $opt_A ) {
+    open(FP, $opt_A) || die "$script: Couldn't open '$opt_A'.\n";
+    my @plist = <FP>;
+    close(FP);
+    chomp(@plist);
+    $search_string = '\b(' . join('|', @plist) . ')\b';
+}
+
+printline "search string: $search_string\n" if ( $opt_V );
+
+my @files = ();
+@files = ( @files, '.*\.(l|ll|flex|lex)'                  ) if ( $opt_l );
+@files = ( @files, '.*\.(y|yy|bison|yy\.pp)'              ) if ( $opt_y );
+@files = ( @files, '.*\.(c|cc|C|cpp|cxx|map|i)',
+                   'VCS_.*\.txt'                          ) if ( $opt_c );
+@files = ( @files, '.*\.(h|hh|ii|hpp|in)',
+                   'library_symbols',
+                   'mapfile.\w+'                          ) if ( $opt_h );
+@files = ( @files, '.*\.(pm|pl|tpl|py)'                   ) if ( $opt_z );
+@files = ( @files, '.*\.tcl'                              ) if ( $opt_t );
+@files = ( @files, 'Master\.\w+',
+                   'build-in2?',
+                   'globalvars',
+                   'rules\.(custom|data)'                 ) if ( $opt_m );
+@files = ( @files, '.*\.' . $opt_e                        ) if ( $opt_e );
+@files = ( @files, $opt_x                                 ) if ( $opt_x );
+
+@files = ( '.*'                                 ) if ( $opt_a || $opt_r );
+
+
+if ( $opt_X ) {
+    &scan_one_file($opt_X);
+}
+elsif ( $opt_F ) {
+    open(FP, $opt_F) || die "$script: Couldn't open '$opt_F'.\n";
+    @files = <FP>;
+    close(FP);
+    foreach my $line ( @files ) {
+        $line =~ s/^\s+//;
+        foreach $fn ( split(/\s+/, $line) ) {
+            &scan_one_file($fn);
+        }
+    }
+}
+else {
+    printline "file patterns: " . join(' ', @files) . "\n" if ( $opt_V );
+
+    @skip_dirs = ('.', '..', 'CVS', 'RCS', split(/[\s,]+/, $opt_s));
+    printline "skip dirs: " . join(" ", @skip_dirs) . "\n" if ( $opt_V );
+
+    @skip_patterns = ( '\.(o|so|a|daidir|pyc)$', split(/[\s,]+/, $opt_P));
+    printline "skip patterns: " . join(" ", @skip_patterns) . "\n" if ( $opt_V );
+
+    $opt_b = 1000 if ( ! $opt_b );
+    $opt_d = "."  if ( ! $opt_d );
+
+    # if multiple dirs in $opt_d, use the first one
+    @dlist = split(/ /, $opt_d);
+    $opt_d = shift @dlist;
+
+    foreach my $dir ( split(/,/, $opt_d) ) {
+        &do_dir("", $dir, 0);
+    }
+}
+
+printlineFlush;
+
+exit 0;
+
+
+sub do_dir {
+    my ( $parent, $dir, $depth ) = @_;
+
+    ++$depth;
+
+    my $this_dir = ( $parent eq "" )? $dir: "$parent/$dir";
+    $this_dir =~ s/^\.\///;
+
+    if ( $opt_j && &disabled("$this_dir") ) {
+        printline "Skipping  $this_dir\n" if ( $opt_V );
+        return;
+    }
+
+    printline "Searching $this_dir ...\n" if ( $opt_V );
+
+    if ( !opendir(DIR, $this_dir) ) {
+        printline "$script: Couldn't open directory '$dir'.\n" if ( ! $opt_q );
+        return;
+    }
+
+    my @pids = ();
+
+    foreach my $f ( readdir(DIR) ) {
+
+        next if ( "$f" =~ /^.\#/ );       # skip emacs backup files
+        next if ( "$f" =~ /~$/ );         # skip emacs revision files
+
+        my $skip = 0;
+        foreach my $s ( @skip_dirs ) {
+            if ( $f eq $s ) {
+                $skip = 1;
+                last;
+            }
+        }
+        next if ( $skip );
+        foreach my $s ( @skip_patterns ) {
+            if ( $f =~ /$s/ ) {
+                $skip = 1;
+                printline "skipping  $this_dir/$f\n" if ( $opt_V );
+                last;
+            }
+        }
+        next if ( $skip );
+
+        if ( -d "$this_dir/$f" ) {        # it's a directory (and not a link)
+            if ( $depth < $opt_b && ! -l "$this_dir/$f" ) {
+                if ( $opt_S ) {
+                    # sequential traversal
+                    &do_dir($this_dir, $f, $depth);
+                }
+                else {
+                    # parallel traversal
+                    my $pid = fork();
+                    if ( $pid ) {
+                        # parent ... record child's pid
+                        push @pids, $pid;
+                    }
+                    elsif ( $pid == 0 ) {
+                        # child ... scan subdir
+                        &do_dir($this_dir, $f, $depth);
+                        exit 0;
+                    }
+                }
+            }
+        }
+
+        elsif ( !$opt_k && -l "$this_dir/$f" ) {
+            printline "skipping  $this_dir/$f (link)\n" if ( $opt_V );
+        }
+
+        else {                            # it's a file
+            foreach my $t ( @files ) {
+                if ( $f =~ /^$t$/ ) {     # verify filename pattern matches
+                    $fn = "$this_dir/$f";
+                    $fn =~ s/^\.\///;
+                    &scan_one_file($fn);
+                }
+            }
+        }
+    }
+    closedir(DIR);
+
+    # wait for children to finish
+    foreach my $pid ( @pids ) {
+        waitpid $pid, 0;
+    }
+}
+
+sub disabled {
+    my ( $dir ) = @_;
+    my $config_file = "$dir/.dirconfig";
+    my $disabled = 0;
+    if ( -e $config_file && open(DP, $config_file) ) {
+        while ( <DP> ) {
+            if ( /DISABLE/ ) {
+                $disabled = 1;
+                last;
+            }
+        }
+        close(DP);
+    }
+    return $disabled;
+}
+
+sub scan_one_file {
+    my ( $fn ) = @_;
+
+    if ( $opt_r && ! -x "$fn" ) {
+        return;
+    }
+
+    if ( !$opt_k && -l "$fn" ) {
+        printline "skipping  $fn (link)\n" if ( $opt_V );
+        return;
+    }
+
+    my ($name, $type, $type2, @rest) = split(' ', `/usr/bin/file '$fn'`);
+    if ( $type eq "ELF" ) {
+        printline "skipping binary $fn\n" if ( $opt_V );
+        return;
+    }
+
+    if ( $opt_r ) {
+        my $csh = ( $type eq "C" && $type2 eq "shell" )? 1: 0;
+        my $sh = ( $type eq "Bourne" && $type2 eq "shell" )? 1: 0;
+        return if ( !$csh && !$sh );
+    }
+
+    if ( !open(FP, "$fn") ) {
+        printline "$script: Can't open '$fn'.\n" if ( ! $opt_q );
+        return;
+    }
+
+    if ( $opt_g && $search_string eq "." ) {
+        if (! ( $opt_v || $opt_f || $opt_G || $opt_n || $opt_u ) ) {
+            printline "${fn}\n";
+            return;
+        }
+    }
+
+    my $count = 0;
+
+    $tail = 0;                  # globals
+    $lineno = 0;
+    $filenm = $fn;
+    @context = ();
+    %printed = ();
+
+    while (<FP>) {
+        ++$lineno;
+
+        if ( $opt_C ) {
+            push @context, $_;
+            printtail $lineno - 1;
+        }
+
+        if ( $opt_o =~ /s/ ) {   # remove script comments:
+            s/\#.*$//;           #  '#' to eol
+        }
+
+        if ( $opt_o =~ /c/ ) {   # remove c++ comments:
+            my $copy = $_;
+            s/\/\*.*?\*\///;     #  '/*' ... '*/'
+            s/\/\/.*$//;         #  '//' to eol
+            printline "${lineno}:- $copy" if ( $opt_V && ( $copy ne $_ ) );
+            if ( /\/\*/ ) {      #  '/*' ... '\n' ... '*/'
+                printline "${lineno}:+ $_" if ( $opt_V );
+                while (<FP>) {
+                    ++$lineno;
+                    if ( $opt_C ) {
+                        push @context, $_;
+                        $printed{$lineno-1} = 1;
+                    }
+                    printline "${lineno}:+ $_" if ( $opt_V );
+                    if ( /\*\// ) {
+                        s/^.*\*\///;
+                        last;
+                    }
+                }
+            }
+        }
+
+        if ( $opt_O ) {         # omit search in strings
+            s/\"[^\"]*\"//g;
+        }
+
+        my $hit = 0;
+        if ( $opt_w ) {
+            if ( $opt_i ) {
+                if ( /\b$search_string\b/i ) {
+                    $hit = 1;
+                }
+            }
+            elsif ( /\b$search_string\b/ ) {
+                $hit = 1;
+            }
+        }
+        elsif ( $opt_i ) {
+            if ( $opt_w ) {
+                if ( /\b$search_string\b/i ) {
+                    $hit = 1;
+                }
+            }
+            elsif ( /$search_string/i ) {
+                $hit = 1;
+            }
+        }
+        elsif ( /$search_string/ ) {
+            $hit = 1;
+        }
+
+        if ( $hit ) {
+            ++$count;
+            if ( $opt_n ) {
+            }
+            elsif ( $opt_v && $opt_g ) {
+                last;
+            }
+            else {
+                if ( $opt_g ) {
+                    printline "${filenm}\n";
+                    last;
+                }
+                printlineC $_;
+                if ( $opt_N && $count >= $opt_N ) {
+                    last;
+                }
+            }
+        }
+        elsif ( $opt_v && ! $opt_g ) {
+            printlineC $_;
+        }
+    }
+    close(FP);
+
+    if ( $opt_v && $opt_g && $count == 0 ) {
+        printline "${filenm}\n"; # no match
+    }
+    elsif ( $opt_n ) {
+        if ( ! $opt_f ) { printline "${filenm}:"; }
+        printline "$count\n";
+    }
+}

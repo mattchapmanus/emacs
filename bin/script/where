@@ -1,0 +1,32 @@
+#!/depot/perl-5.8.3/bin/perl
+#
+# Filename: where
+#
+# Search the $PATH env string for the specified file(s).
+#
+#
+require "getopts.pl";
+
+&Getopts('v');                  # v = verbose
+
+if ( @ARGV == 0 ) {
+  print "Search \$PATH for the specified files.\n";
+  print "Usage: where [-v] file1 file2 ...\n";
+  print "  -v   verbose listing\n";
+  exit 1;
+}
+
+@pathdirs = grep (m!^/!, split(/:/, $ENV{'PATH'}, 999));
+
+foreach $filename ( @ARGV ) {
+  foreach $dir ( @pathdirs ) {
+    if ( -x "$dir/$filename" && ! -d "$dir/$filename" ) {
+      if ( $opt_v ) {
+          system "ls -lFd $dir/$filename";
+      }
+      else {
+          print "$dir/$filename\n";
+      }
+    }
+  }
+}

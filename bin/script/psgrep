@@ -1,0 +1,62 @@
+#!/bin/sh
+
+if [ "$*" = "" ]; then
+    echo "Usage: psgrep [-h] [-p] <egrep-cmdline>"
+    echo "  -h      print the ps header line"
+    echo "  -p      display the psgrep processes (normally filtered)"
+    exit 0
+fi
+
+HEADER=0
+FILTER1="cat"
+FILTER2="egrep -v psgrep"
+
+# echo ARGS = $*
+
+for flag do
+    if [ x"$flag" = x"-h" ]; then
+        HEADER=1
+        FILTER1="egrep -v ^USER"
+        shift
+    elif [ x"$flag" = x"-p" ]; then
+        FILTER2="cat"
+        shift
+    else
+        break
+    fi
+done
+
+# echo ARGS = $*
+
+MODE=auxw
+PS=ps
+
+case `uname` in
+  HP-UX)
+    MODE=-edf
+    ;;
+  IRIX*)
+    MODE=-edf
+    ;;
+  Linux)
+    MODE=auxw
+    ;;
+  SunOS)
+    PS=/usr/ucb/ps
+    MODE=auxw
+    ;;
+  OSF1)
+    MODE=auxw
+    ;;
+  AIX)
+    MODE=auxw
+    ;;
+esac
+
+if [ $HEADER = 1 ]; then
+    $PS $MODE | head -1
+fi
+
+$PS $MODE > /tmp/psgrep.$$
+cat /tmp/psgrep.$$ | egrep "$@" | $FILTER1 | $FILTER2
+rm -f /tmp/psgrep.$$

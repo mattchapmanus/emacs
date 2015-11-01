@@ -1,0 +1,46 @@
+#! /bin/csh -f
+#
+# purge -- moves backup files to "trash" directory.
+#
+
+set levels = "1"
+set purge_this_dir = 1
+
+while ( "$1" != "" )
+  if ( "$1" == "-r" ) then
+    exec $HOME/bin/script/purge_dir .
+
+  else if ( -d "$1" ) then
+    pushd $1 >& /dev/null
+    $0
+    popd >& /dev/null
+    set purge_this_dir = 0
+
+  else
+    echo "$0 - unknown arg '$1'"
+    exit 1
+  endif
+  shift
+end
+
+if ( $purge_this_dir ) then
+
+  set nonomatch
+  set f1=(*~*)
+  set f2=(.*~*)
+  set f3=(\#*\#)
+  set f4=(.\#*)
+  set f5=(*.pyc)
+
+  if ($f1[1] != '*~*')    mv -f $f1 ~/trash
+  if ($f2[1] != '.*~*')   mv -f $f2 ~/trash
+  if ($f3[1] != '#*#')    mv -f $f3 ~/trash
+  if ($f4[1] != '.#*')    mv -f $f4 ~/trash
+  if ($f5[1] != '*.pyc')  mv -f $f5 ~/trash
+
+  set f5=(tmp_dir_*)
+  if ($f5[1] != 'tmp_dir_*') rmdir $f5
+
+endif
+
+exit 0

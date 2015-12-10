@@ -1,11 +1,26 @@
-#!/depot/perl-5.8.3/bin/perl
+#!/usr/bin/perl
 
 @cmdline = @ARGV;               # save a copy
 
 ($script = $0) =~ s#^.*/##;     # get basename of this script
 
-require "getopts.pl";
-&Getopts('aA:b:cCd:D:e:fF:gGhijJklL:mM:nN:o:Op:qrs:StuvVwx:X:yz');
+use Getopt::Long;
+Getopt::Long::Configure("bundling"); # -qa === -q -a
+
+# Hack: Use $opt_X format with Long options
+my %options = ();
+my @chars = split('', 'aA:b:cCd:D:e:fF:gGhijJklL:mM:nN:o:Op:qrs:StuvVwx:X:yz');
+for (my $i = 0; $i < @chars; $i++) {
+    my $c = $chars[$i];
+    my $o = $c;
+    $o .= "=s" if ( (($i+1) < @chars) && ($chars[$i+1] eq ":") );
+    if ( $c ne ":" ) {
+        eval("\$opt_$c = 0");
+        $options{$o} = 0;
+    }
+}
+
+GetOptions(%options);
 
 # use syswrite() to force line buffering even on redirected/piped output
 sub printline {

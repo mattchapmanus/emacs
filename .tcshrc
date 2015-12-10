@@ -455,6 +455,7 @@ foreach fn (  \
               /usr/openwin            \
               /usr/bsd                \
               /usr/sbin               \
+              /sbin                   \
               /usr/games              \
               /export/home/Gnu/Solaris/bin    \
               /lib                    \
@@ -465,9 +466,10 @@ foreach fn (  \
               /depot/ddd-3.3.8-OS8/bin \
               )
 
-      if ( $?echo ) echo $fn
-
-      if (-d $fn) set path = ( $path $fn )
+      if (-d $fn) then
+        set path = ( $path $fn )
+#        echo $fn
+      endif
 end
 
 if (`$uname` == Linux ) then

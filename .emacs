@@ -15,11 +15,11 @@
 
 ;; CCM Perl
 ;;
-(add-hook 'perl-mode-hook 'vg-display-whitespace)
+;(add-hook 'perl-mode-hook 'vg-display-whitespace)
 
 ;; CCM Python
 ;;
-(add-hook 'python-mode-hook 'vg-display-whitespace)
+;(add-hook 'python-mode-hook 'vg-display-whitespace)
 
 ;; JSON mode --> python mode
 ;;
@@ -28,7 +28,7 @@
 ;; XML mode
 ;;
 (add-to-list 'auto-mode-alist '("\\.xml\\'" . nxml-mode))
-(add-hook 'nxml-mode-hook 'vg-display-whitespace)
+;(add-hook 'nxml-mode-hook 'vg-display-whitespace)
 
 ;; 80 Column Rule
 ;;

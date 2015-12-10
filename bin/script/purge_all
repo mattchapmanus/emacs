@@ -1,0 +1,9 @@
+#!/bin/sh
+
+$HOME/bin/script/purge_dir $HOME &
+
+for fn in $HOME/build/* ; do
+  if [ -d $fn ]
+  then $HOME/bin/script/purge_dir $fn &
+  fi
+done

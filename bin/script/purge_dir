@@ -1,0 +1,70 @@
+#!/bin/csh -f
+
+if ("$1" == "") then
+  echo "Usage: purge_dir root_of_directory_tree [N] [.]"
+  echo "  .   enables tracing"
+  echo "  N   levels to purge, 1 = currrent dir"
+  exit 0
+endif
+
+set subdir = "$1"
+set trace  = ""
+@ levels = 100
+
+shift
+
+while ( "$1" != "" )
+  if ( "$1" == "." ) then
+    set trace = "$subdir"
+  else if ( $1 =~ [0-9] ) then
+    @ levels = $1
+  else
+    echo "$0 - unknown arg '$1'"
+    exit 1
+  endif
+  shift
+end
+
+if (! -d "$subdir") exit 1
+
+cd "$subdir"
+if ($status) exit 1
+
+if ("$subdir:t" == "trash") exit 0
+
+if ( $trace != "" ) then
+  echo $trace
+endif
+
+@ levels = $levels - 1
+if ( $levels < 0 ) exit 0
+
+$HOME/bin/script/purge          # purge this dir
+
+set nonomatch
+
+foreach fn (*)
+  # if there's something here ...
+  if ("$fn" != "*") then
+    # and it's a directory and we own it and it's not a link ...
+    /usr/bin/test -L "$fn"
+    set notlink = $status
+    if ( $trace != "" && ! $notlink ) then
+      set realfile = `ls -ld "$fn" | awk '{print $NF }'`
+      if ( ! -e $realfile ) then
+        echo "badlink: $trace/$fn -> $realfile"
+      endif
+    endif
+    if ( $notlink && -d "$fn" && -o "$fn") then
+      # push into the directory
+      if ( "$trace" != "" ) then
+        set t = "$trace/$fn"
+      else
+        set t = ""
+      endif
+      $0 "$fn" "$t" $levels
+    endif
+  endif
+end
+
+exit 0

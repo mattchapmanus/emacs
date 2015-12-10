@@ -1,0 +1,5 @@
+#!/bin/sh
+
+emacs "$@" 2>&1 \
+  | egrep . \
+  | egrep -v GLib-GObject-WARNING &
